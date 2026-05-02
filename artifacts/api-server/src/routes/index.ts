@@ -7,6 +7,7 @@ import paymentsRouter from "./payments";
 import tripsRouter from "./trips";
 import recurringRouter from "./recurring";
 import dashboardRouter from "./dashboard";
+import contactsRouter from "./contacts";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(paymentsRouter);
 router.use(tripsRouter);
 router.use(recurringRouter);
 router.use(dashboardRouter);
+router.use(contactsRouter);
 
 export default router;
