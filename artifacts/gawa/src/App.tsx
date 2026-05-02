@@ -15,6 +15,7 @@ import TripDetail from "@/pages/trips/detail";
 import RecurringList from "@/pages/recurring/index";
 import ActivityFeed from "@/pages/activity/index";
 import ContactsList from "@/pages/contacts/index";
+import GroupsList from "@/pages/groups/index";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +34,7 @@ function Router() {
             <Route path="/trips/:id" component={TripDetail} />
             <Route path="/recurring" component={RecurringList} />
             <Route path="/contacts" component={ContactsList} />
+            <Route path="/groups" component={GroupsList} />
             <Route path="/activity" component={ActivityFeed} />
             <Route component={NotFound} />
           </Switch>
