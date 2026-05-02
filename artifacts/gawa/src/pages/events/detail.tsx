@@ -11,7 +11,7 @@ import { formatCurrency, formatPhone } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Send, CheckCircle2, UserPlus, Phone, Loader2, MoreVertical, MessageCircle, Share2 } from "lucide-react";
+import { ArrowLeft, Send, CheckCircle2, UserPlus, Phone, Loader2, MoreVertical, MessageCircle, Share2, Link2, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -43,6 +43,7 @@ export default function EventDetail() {
   const [isAddParticipantOpen, setIsAddParticipantOpen] = useState(false);
   const [newParticipant, setNewParticipant] = useState({ name: "", phone: "", amount: "" });
   const [markingPaid, setMarkingPaid] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const { data: event, isLoading } = useGetEvent(eventId, {
     query: {
@@ -102,6 +103,16 @@ export default function EventDetail() {
     });
   };
 
+  const handleCopyLink = () => {
+    const base = window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, "");
+    const shareUrl = `${base}/share/${eventId}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopied(true);
+      toast({ title: "Link copied!", description: "Share it in your group chat." });
+      setTimeout(() => setCopied(false), 2500);
+    });
+  };
+
   const handleShareAll = () => {
     if (!event) return;
     const unpaid = event.participants.filter((p: any) => p.paymentStatus !== "paid");
@@ -123,25 +134,38 @@ export default function EventDetail() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6 pb-32">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => setLocation("/events")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight">{event.title}</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl font-bold tracking-tight truncate">{event.title}</h1>
           <p className="text-muted-foreground text-sm">
             {formatCurrency(event.totalAmount)} • {event.splitType} split • Paid by {event.payerName}
           </p>
         </div>
-        <Badge variant={
-          event.status === 'settled' ? 'default' :
-          event.status === 'partial' ? 'outline' :
-          event.status === 'sent' ? 'secondary' : 'outline'
-        }>
-          {event.status === 'settled' ? '✓ Settled' :
-           event.status === 'partial' ? `${paidParticipants.length}/${event.participants.length} paid` :
-           event.status === 'sent' ? 'Requests Sent' : 'Draft'}
-        </Badge>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-xs"
+            onClick={handleCopyLink}
+          >
+            {copied
+              ? <><Check className="h-3.5 w-3.5 text-primary" /> Copied</>
+              : <><Link2 className="h-3.5 w-3.5" /> Share</>
+            }
+          </Button>
+          <Badge variant={
+            event.status === 'settled' ? 'default' :
+            event.status === 'partial' ? 'outline' :
+            event.status === 'sent' ? 'secondary' : 'outline'
+          }>
+            {event.status === 'settled' ? '✓ Settled' :
+             event.status === 'partial' ? `${paidParticipants.length}/${event.participants.length} paid` :
+             event.status === 'sent' ? 'Requests Sent' : 'Draft'}
+          </Badge>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-6">
