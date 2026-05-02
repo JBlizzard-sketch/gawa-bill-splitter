@@ -11,13 +11,28 @@ import { formatCurrency, formatPhone } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Send, CheckCircle2, UserPlus, Phone, Loader2, MoreVertical } from "lucide-react";
+import { ArrowLeft, Send, CheckCircle2, UserPlus, Phone, Loader2, MoreVertical, MessageCircle, Share2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+
+function toKenyanE164(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("254")) return digits;
+  if (digits.startsWith("0")) return "254" + digits.slice(1);
+  return "254" + digits;
+}
+
+function buildWhatsAppLink(phone: string, message: string): string {
+  return `https://wa.me/${toKenyanE164(phone)}?text=${encodeURIComponent(message)}`;
+}
+
+function buildReminderMessage(eventTitle: string, amount: number, payerName: string): string {
+  return `Hi! 👋 You owe *${formatCurrency(amount)}* for *${eventTitle}* (paid by ${payerName}). Please send via Mpesa when you get a chance. Thanks!`;
+}
 
 export default function EventDetail() {
   const { id } = useParams();
@@ -85,6 +100,16 @@ export default function EventDetail() {
         setMarkingPaid(null);
       }
     });
+  };
+
+  const handleShareAll = () => {
+    if (!event) return;
+    const unpaid = event.participants.filter((p: any) => p.paymentStatus !== "paid");
+    unpaid.forEach((p: any) => {
+      const msg = buildReminderMessage(event.title, p.shareAmount, event.payerName);
+      window.open(buildWhatsAppLink(p.mpesaPhone, msg), "_blank", "noopener,noreferrer");
+    });
+    toast({ title: `Opened ${unpaid.length} WhatsApp chat${unpaid.length !== 1 ? "s" : ""}` });
   };
 
   if (isLoading) {
@@ -189,13 +214,13 @@ export default function EventDetail() {
                 <div className="space-y-3 mt-2">
                   {event.participants.map((p: any) => (
                     <div key={p.id} className="flex items-center justify-between py-3 border-b border-border/40 last:border-0">
-                      <div className="flex-1">
-                        <div className="font-medium">{p.name}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{p.name}</div>
                         <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                          <Phone className="h-3 w-3" /> {formatPhone(p.mpesaPhone)}
+                          <Phone className="h-3 w-3 flex-shrink-0" /> {formatPhone(p.mpesaPhone)}
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-shrink-0">
                         <div className="text-right">
                           <div className="font-semibold">{formatCurrency(p.shareAmount)}</div>
                           <div className="mt-1">
@@ -223,6 +248,23 @@ export default function EventDetail() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                asChild
+                              >
+                                <a
+                                  href={buildWhatsAppLink(
+                                    p.mpesaPhone,
+                                    buildReminderMessage(event.title, p.shareAmount, event.payerName)
+                                  )}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center cursor-pointer"
+                                >
+                                  <MessageCircle className="h-4 w-4 mr-2 text-green-500" />
+                                  Send WhatsApp Reminder
+                                </a>
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => handleMarkPaid(p.id)}>
                                 <CheckCircle2 className="h-4 w-4 mr-2 text-primary" />
                                 Mark as Paid
@@ -294,6 +336,58 @@ export default function EventDetail() {
               )}
             </CardContent>
           </Card>
+
+          {unpaidParticipants.length > 0 && (
+            <Card className="border-green-500/20 bg-green-500/5">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="bg-green-500 rounded-full p-1.5 flex-shrink-0">
+                    <MessageCircle className="h-3.5 w-3.5 text-white" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold">WhatsApp Reminders</div>
+                    <div className="text-xs text-muted-foreground">
+                      Nudge all {unpaidParticipants.length} unpaid at once
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {unpaidParticipants.map((p: any) => (
+                    <a
+                      key={p.id}
+                      href={buildWhatsAppLink(
+                        p.mpesaPhone,
+                        buildReminderMessage(event.title, p.shareAmount, event.payerName)
+                      )}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between p-2.5 rounded-lg bg-background/60 hover:bg-background transition-colors border border-border/30 group"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <MessageCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium truncate">{p.name}</div>
+                          <div className="text-xs text-muted-foreground">{formatCurrency(p.shareAmount)}</div>
+                        </div>
+                      </div>
+                      <Share2 className="h-3.5 w-3.5 text-muted-foreground group-hover:text-green-500 transition-colors flex-shrink-0 ml-2" />
+                    </a>
+                  ))}
+                </div>
+                {unpaidParticipants.length > 1 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-3 border-green-500/30 text-green-500 hover:bg-green-500/10 hover:text-green-400 hover:border-green-500/50"
+                    onClick={handleShareAll}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    Message All {unpaidParticipants.length}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {event.payments && event.payments.length > 0 && (
             <Card>
