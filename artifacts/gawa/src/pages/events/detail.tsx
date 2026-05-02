@@ -12,13 +12,14 @@ import { formatCurrency, formatPhone } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Send, CheckCircle2, UserPlus, Phone, Loader2, MoreVertical, MessageCircle, Share2, Link2, Check, Users } from "lucide-react";
+import { ArrowLeft, Send, CheckCircle2, UserPlus, Phone, Loader2, MoreVertical, MessageCircle, Share2, Link2, Check, Users, FileDown } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { exportEventPdf } from "@/lib/export-pdf";
 
 function getInitials(name: string) {
   return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
@@ -63,6 +64,7 @@ export default function EventDetail() {
   const [newParticipant, setNewParticipant] = useState({ name: "", phone: "", amount: "" });
   const [markingPaid, setMarkingPaid] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const { data: event, isLoading } = useGetEvent(eventId, {
     query: {
@@ -146,6 +148,21 @@ export default function EventDetail() {
     });
   };
 
+  const handleExportPdf = async () => {
+    if (!event) return;
+    setExportingPdf(true);
+    try {
+      const base = window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, "");
+      const shareUrl = `${base}/share/${eventId}`;
+      await exportEventPdf(event as any, shareUrl);
+      toast({ title: "Receipt downloaded!" });
+    } catch {
+      toast({ title: "Failed to generate PDF", variant: "destructive" });
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   const handleShareAll = () => {
     if (!event) return;
     const unpaid = event.participants.filter((p: any) => p.paymentStatus !== "paid");
@@ -178,6 +195,19 @@ export default function EventDetail() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-xs"
+            onClick={handleExportPdf}
+            disabled={exportingPdf}
+          >
+            {exportingPdf
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <FileDown className="h-3.5 w-3.5" />
+            }
+            <span className="hidden sm:inline">PDF</span>
+          </Button>
           <Button
             variant="outline"
             size="sm"
