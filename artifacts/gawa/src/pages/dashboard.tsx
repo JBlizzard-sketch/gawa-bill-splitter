@@ -2,13 +2,19 @@ import {
   useGetDashboardSummary, getGetDashboardSummaryQueryKey,
   useGetRecentActivity, getGetRecentActivityQueryKey,
   useGetWeeklyStats, getGetWeeklyStatsQueryKey,
+  useListRecurring, getListRecurringQueryKey,
+  useFireRecurring,
 } from "@workspace/api-client-react";
 import { Link } from "wouter";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrency, formatDate, formatShortDate } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, ArrowUpRight, ArrowDownRight, Wallet, Receipt, Map as MapIcon, Activity, ArrowDownLeft, Sparkles } from "lucide-react";
+import { Plus, ArrowUpRight, ArrowDownRight, Wallet, Receipt, Map as MapIcon, Activity, ArrowDownLeft, Sparkles, CalendarClock, Bell, Send, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer,
@@ -65,7 +71,27 @@ function WeeklyTooltip({ active, payload, label }: { active?: boolean; payload?:
   );
 }
 
+function daysUntil(dateStr: string | null | undefined): number | null {
+  if (!dateStr) return null;
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const due = new Date(dateStr);
+  due.setHours(0, 0, 0, 0);
+  return Math.round((due.getTime() - now.getTime()) / 86_400_000);
+}
+
+function urgencyLabel(days: number): { label: string; className: string } {
+  if (days < 0)  return { label: "Overdue",   className: "bg-red-500/15 text-red-400 border-red-500/25" };
+  if (days === 0) return { label: "Due today", className: "bg-amber-500/15 text-amber-400 border-amber-500/25" };
+  if (days === 1) return { label: "Tomorrow",  className: "bg-amber-500/15 text-amber-400 border-amber-500/25" };
+  return { label: `In ${days} days`,           className: "bg-secondary text-muted-foreground border-border/50" };
+}
+
 export default function Dashboard() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [firingId, setFiringId] = useState<number | null>(null);
+
   const { data: summary, isLoading } = useGetDashboardSummary({
     query: { queryKey: getGetDashboardSummaryQueryKey() }
   });
@@ -80,6 +106,42 @@ export default function Dashboard() {
   const { data: weekly, isLoading: weeklyLoading } = useGetWeeklyStats({
     query: { queryKey: getGetWeeklyStatsQueryKey() }
   });
+
+  const { data: allRecurring } = useListRecurring(undefined, {
+    query: { queryKey: getListRecurringQueryKey() }
+  });
+
+  const fireRecurring = useFireRecurring();
+
+  const dueSoon = (allRecurring ?? []).filter(b => {
+    if (!b.isActive) return false;
+    const days = daysUntil(b.nextFireAt);
+    return days !== null && days <= 7;
+  }).sort((a, b) => {
+    const da = daysUntil(a.nextFireAt) ?? 999;
+    const db = daysUntil(b.nextFireAt) ?? 999;
+    return da - db;
+  });
+
+  const handleFire = (id: number, name: string) => {
+    setFiringId(id);
+    fireRecurring.mutate(
+      { id },
+      {
+        onSuccess: (event: any) => {
+          toast({
+            title: `${name} sent!`,
+            description: `Split created — ${event.participantCount ?? 0} M-Pesa request${(event.participantCount ?? 0) !== 1 ? "s" : ""} queued.`,
+          });
+          queryClient.invalidateQueries({ queryKey: getListRecurringQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetRecentActivityQueryKey({ limit: 5 }) });
+        },
+        onError: () => toast({ title: `Failed to send ${name}`, variant: "destructive" }),
+        onSettled: () => setFiringId(null),
+      }
+    );
+  };
 
   const weeklyHasData = weekly?.some(d => d.collected > 0 || d.pending > 0);
 
@@ -151,6 +213,73 @@ export default function Dashboard() {
           </Card>
         </div>
       ) : null}
+
+      {/* Due Soon banner */}
+      {dueSoon.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-amber-500/15 rounded-full">
+              <Bell className="h-3.5 w-3.5 text-amber-500" />
+            </div>
+            <h2 className="text-sm font-semibold">
+              {dueSoon.length} recurring bill{dueSoon.length !== 1 ? "s" : ""} due soon
+            </h2>
+            <Link href="/recurring" className="ml-auto text-xs text-primary hover:underline">
+              View all
+            </Link>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {dueSoon.map(bill => {
+              const days = daysUntil(bill.nextFireAt) ?? 0;
+              const { label, className } = urgencyLabel(days);
+              const isFiring = firingId === bill.id;
+
+              return (
+                <Card key={bill.id} className="border-amber-500/20 bg-amber-500/5">
+                  <CardContent className="p-4 flex items-center gap-4">
+                    {/* Icon */}
+                    <div className="bg-amber-500/15 p-2.5 rounded-lg flex-shrink-0">
+                      <CalendarClock className="h-5 w-5 text-amber-500" />
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold truncate">{bill.name}</span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] px-1.5 py-0 border ${className}`}
+                        >
+                          {label}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {formatCurrency(bill.amount)} · {bill.frequency} · due {formatShortDate(bill.nextFireAt)}
+                      </div>
+                    </div>
+
+                    {/* Action */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 flex-shrink-0 border-amber-500/30 hover:bg-amber-500/10 text-xs"
+                      disabled={isFiring}
+                      onClick={() => handleFire(bill.id, bill.name)}
+                    >
+                      {isFiring
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <Send className="h-3.5 w-3.5" />
+                      }
+                      <span className="hidden sm:inline">Send</span>
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Weekly chart */}
       <Card>
