@@ -62,7 +62,14 @@ router.get("/trips/:id", async (req, res): Promise<void> => {
     const outstandingAmount = participants
       .filter(p => p.paymentStatus !== "paid")
       .reduce((sum, p) => sum + parseFloat(String(p.shareAmount)), 0);
-    return { ...event, totalAmount: parseFloat(String(event.totalAmount)), participantCount: participants.length, paidCount, outstandingAmount };
+    const participantList = participants.map(p => ({
+      id: p.id,
+      name: p.name,
+      mpesaPhone: p.mpesaPhone,
+      shareAmount: parseFloat(String(p.shareAmount)),
+      paymentStatus: p.paymentStatus,
+    }));
+    return { ...event, totalAmount: parseFloat(String(event.totalAmount)), participantCount: participants.length, paidCount, outstandingAmount, participants: participantList };
   }));
   const summary = await buildTripSummary(trip);
   res.json({ ...summary, events: eventsWithCounts });
