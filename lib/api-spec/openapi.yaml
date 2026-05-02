@@ -1,0 +1,1228 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Gawa - Bill splitting and Mpesa payment request API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: events
+    description: Bill splitting events
+  - name: participants
+    description: Event participants
+  - name: items
+    description: Bill items
+  - name: payments
+    description: Payment tracking and Mpesa STK push
+  - name: trips
+    description: Multi-expense trip/group tracking
+  - name: recurring
+    description: Recurring bill schedules
+  - name: dashboard
+    description: Summary and analytics
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  # ── Events ──────────────────────────────────────────────────────────────────
+
+  /events:
+    get:
+      operationId: listEvents
+      tags: [events]
+      summary: List all events
+      parameters:
+        - in: query
+          name: tripId
+          schema:
+            type: ["integer", "null"]
+          required: false
+      responses:
+        "200":
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Event"
+    post:
+      operationId: createEvent
+      tags: [events]
+      summary: Create a new bill splitting event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEventBody"
+      responses:
+        "201":
+          description: Created event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+
+  /events/{id}:
+    get:
+      operationId: getEvent
+      tags: [events]
+      summary: Get event with participants, items, and payment status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Event detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventDetail"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateEvent
+      tags: [events]
+      summary: Update event
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEventBody"
+      responses:
+        "200":
+          description: Updated event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+    delete:
+      operationId: deleteEvent
+      tags: [events]
+      summary: Delete an event
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Participants ─────────────────────────────────────────────────────────────
+
+  /events/{eventId}/participants:
+    get:
+      operationId: listParticipants
+      tags: [participants]
+      summary: List participants for an event
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of participants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Participant"
+    post:
+      operationId: addParticipant
+      tags: [participants]
+      summary: Add a participant to an event
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddParticipantBody"
+      responses:
+        "201":
+          description: Added participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Participant"
+
+  /events/{eventId}/participants/{participantId}:
+    patch:
+      operationId: updateParticipant
+      tags: [participants]
+      summary: Update participant share or details
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: participantId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateParticipantBody"
+      responses:
+        "200":
+          description: Updated participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Participant"
+    delete:
+      operationId: removeParticipant
+      tags: [participants]
+      summary: Remove a participant
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: participantId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Removed
+
+  # ── Items ────────────────────────────────────────────────────────────────────
+
+  /events/{eventId}/items:
+    get:
+      operationId: listItems
+      tags: [items]
+      summary: List bill items for an event
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of bill items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BillItem"
+    post:
+      operationId: createItem
+      tags: [items]
+      summary: Add a bill item (for itemised splitting)
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateItemBody"
+      responses:
+        "201":
+          description: Created item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillItem"
+
+  /events/{eventId}/items/{itemId}:
+    patch:
+      operationId: updateItem
+      tags: [items]
+      summary: Update a bill item
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: itemId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateItemBody"
+      responses:
+        "200":
+          description: Updated item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillItem"
+    delete:
+      operationId: deleteItem
+      tags: [items]
+      summary: Delete a bill item
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: itemId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Payments ─────────────────────────────────────────────────────────────────
+
+  /events/{eventId}/send-requests:
+    post:
+      operationId: sendPaymentRequests
+      tags: [payments]
+      summary: Send Mpesa STK push to all unpaid participants
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: STK push results per participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendRequestsResult"
+
+  /events/{eventId}/payments:
+    get:
+      operationId: listPayments
+      tags: [payments]
+      summary: List payment records for an event
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of payment records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Payment"
+
+  /events/{eventId}/participants/{participantId}/mark-paid:
+    post:
+      operationId: markPaid
+      tags: [payments]
+      summary: Manually mark a participant as paid
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: participantId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Participant"
+
+  /mpesa/callback:
+    post:
+      operationId: mpesaCallback
+      tags: [payments]
+      summary: Mpesa STK push callback (called by Safaricom)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Acknowledged
+
+  # ── Trips ────────────────────────────────────────────────────────────────────
+
+  /trips:
+    get:
+      operationId: listTrips
+      tags: [trips]
+      summary: List all trips/groups
+      responses:
+        "200":
+          description: List of trips
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Trip"
+    post:
+      operationId: createTrip
+      tags: [trips]
+      summary: Create a trip or group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTripBody"
+      responses:
+        "201":
+          description: Created trip
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trip"
+
+  /trips/{id}:
+    get:
+      operationId: getTrip
+      tags: [trips]
+      summary: Get trip details with events and balances
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Trip detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TripDetail"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateTrip
+      tags: [trips]
+      summary: Update trip
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTripBody"
+      responses:
+        "200":
+          description: Updated trip
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trip"
+    delete:
+      operationId: deleteTrip
+      tags: [trips]
+      summary: Delete a trip
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Recurring Bills ──────────────────────────────────────────────────────────
+
+  /recurring:
+    get:
+      operationId: listRecurring
+      tags: [recurring]
+      summary: List all recurring bill schedules
+      responses:
+        "200":
+          description: List of recurring schedules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecurringBill"
+    post:
+      operationId: createRecurring
+      tags: [recurring]
+      summary: Create a recurring bill schedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRecurringBody"
+      responses:
+        "201":
+          description: Created recurring bill
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringBill"
+
+  /recurring/{id}:
+    patch:
+      operationId: updateRecurring
+      tags: [recurring]
+      summary: Update a recurring bill schedule
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRecurringBody"
+      responses:
+        "200":
+          description: Updated recurring bill
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringBill"
+    delete:
+      operationId: deleteRecurring
+      tags: [recurring]
+      summary: Delete a recurring bill schedule
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /recurring/{id}/fire:
+    post:
+      operationId: fireRecurring
+      tags: [recurring]
+      summary: Manually fire a recurring bill cycle now
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Created event from recurring template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+
+  # ── Dashboard ────────────────────────────────────────────────────────────────
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get summary stats — total events, amounts, outstanding balances
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recent payment activity across all events
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: Recent activity list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    # ── Event ──────────────────────────────────────────────────────────────────
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        totalAmount:
+          type: number
+        splitType:
+          type: string
+          enum: [equal, itemised, custom]
+        status:
+          type: string
+          enum: [draft, sent, partial, settled]
+        payerName:
+          type: string
+        tripId:
+          type: ["integer", "null"]
+        recurringId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        participantCount:
+          type: integer
+        paidCount:
+          type: integer
+        outstandingAmount:
+          type: number
+      required:
+        - id
+        - title
+        - totalAmount
+        - splitType
+        - status
+        - payerName
+        - createdAt
+        - updatedAt
+        - participantCount
+        - paidCount
+        - outstandingAmount
+
+    CreateEventBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        totalAmount:
+          type: number
+        splitType:
+          type: string
+          enum: [equal, itemised, custom]
+        payerName:
+          type: string
+        tripId:
+          type: ["integer", "null"]
+      required:
+        - title
+        - totalAmount
+        - splitType
+        - payerName
+
+    UpdateEventBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        totalAmount:
+          type: number
+        splitType:
+          type: string
+          enum: [equal, itemised, custom]
+        status:
+          type: string
+          enum: [draft, sent, partial, settled]
+        payerName:
+          type: string
+
+    EventDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        totalAmount:
+          type: number
+        splitType:
+          type: string
+          enum: [equal, itemised, custom]
+        status:
+          type: string
+          enum: [draft, sent, partial, settled]
+        payerName:
+          type: string
+        tripId:
+          type: ["integer", "null"]
+        recurringId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/Participant"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillItem"
+        payments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Payment"
+        participantCount:
+          type: integer
+        paidCount:
+          type: integer
+        outstandingAmount:
+          type: number
+      required:
+        - id
+        - title
+        - totalAmount
+        - splitType
+        - status
+        - payerName
+        - createdAt
+        - updatedAt
+        - participants
+        - items
+        - payments
+        - participantCount
+        - paidCount
+        - outstandingAmount
+
+    # ── Participant ────────────────────────────────────────────────────────────
+
+    Participant:
+      type: object
+      properties:
+        id:
+          type: integer
+        eventId:
+          type: integer
+        name:
+          type: string
+        mpesaPhone:
+          type: string
+        shareAmount:
+          type: number
+        paymentStatus:
+          type: string
+          enum: [pending, requested, paid, failed]
+        mpesaReceiptNumber:
+          type: ["string", "null"]
+        paidAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - eventId
+        - name
+        - mpesaPhone
+        - shareAmount
+        - paymentStatus
+        - createdAt
+
+    AddParticipantBody:
+      type: object
+      properties:
+        name:
+          type: string
+        mpesaPhone:
+          type: string
+        shareAmount:
+          type: ["number", "null"]
+      required:
+        - name
+        - mpesaPhone
+
+    UpdateParticipantBody:
+      type: object
+      properties:
+        name:
+          type: string
+        mpesaPhone:
+          type: string
+        shareAmount:
+          type: number
+
+    # ── Bill Item ──────────────────────────────────────────────────────────────
+
+    BillItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        eventId:
+          type: integer
+        name:
+          type: string
+        amount:
+          type: number
+        assignedTo:
+          type: ["string", "null"]
+          description: Comma-separated participant names or null for shared
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - eventId
+        - name
+        - amount
+        - createdAt
+
+    CreateItemBody:
+      type: object
+      properties:
+        name:
+          type: string
+        amount:
+          type: number
+        assignedTo:
+          type: ["string", "null"]
+      required:
+        - name
+        - amount
+
+    UpdateItemBody:
+      type: object
+      properties:
+        name:
+          type: string
+        amount:
+          type: number
+        assignedTo:
+          type: ["string", "null"]
+
+    # ── Payment ────────────────────────────────────────────────────────────────
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: integer
+        eventId:
+          type: integer
+        participantId:
+          type: integer
+        participantName:
+          type: string
+        amount:
+          type: number
+        mpesaPhone:
+          type: string
+        status:
+          type: string
+          enum: [initiated, success, failed, cancelled]
+        mpesaReceiptNumber:
+          type: ["string", "null"]
+        checkoutRequestId:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - eventId
+        - participantId
+        - participantName
+        - amount
+        - mpesaPhone
+        - status
+        - createdAt
+        - updatedAt
+
+    SendRequestsResult:
+      type: object
+      properties:
+        sent:
+          type: integer
+        failed:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/StkPushResult"
+      required:
+        - sent
+        - failed
+        - results
+
+    StkPushResult:
+      type: object
+      properties:
+        participantId:
+          type: integer
+        participantName:
+          type: string
+        phone:
+          type: string
+        success:
+          type: boolean
+        checkoutRequestId:
+          type: ["string", "null"]
+        errorMessage:
+          type: ["string", "null"]
+      required:
+        - participantId
+        - participantName
+        - phone
+        - success
+
+    # ── Trip ──────────────────────────────────────────────────────────────────
+
+    Trip:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, completed]
+        totalSpent:
+          type: number
+        outstandingAmount:
+          type: number
+        eventCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - status
+        - totalSpent
+        - outstandingAmount
+        - eventCount
+        - createdAt
+        - updatedAt
+
+    CreateTripBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+      required:
+        - name
+
+    UpdateTripBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, completed]
+
+    TripDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, completed]
+        totalSpent:
+          type: number
+        outstandingAmount:
+          type: number
+        eventCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/Event"
+      required:
+        - id
+        - name
+        - status
+        - totalSpent
+        - outstandingAmount
+        - eventCount
+        - createdAt
+        - updatedAt
+        - events
+
+    # ── Recurring ─────────────────────────────────────────────────────────────
+
+    RecurringBill:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        amount:
+          type: number
+        frequency:
+          type: string
+          enum: [weekly, monthly, custom]
+        dayOfMonth:
+          type: ["integer", "null"]
+        participants:
+          type: string
+          description: JSON string of participant name/phone pairs
+        splitType:
+          type: string
+          enum: [equal, custom]
+        payerName:
+          type: string
+        isActive:
+          type: boolean
+        nextFireAt:
+          type: ["string", "null"]
+          format: date-time
+        lastFiredAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - amount
+        - frequency
+        - participants
+        - splitType
+        - payerName
+        - isActive
+        - createdAt
+
+    CreateRecurringBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        amount:
+          type: number
+        frequency:
+          type: string
+          enum: [weekly, monthly, custom]
+        dayOfMonth:
+          type: ["integer", "null"]
+        participants:
+          type: string
+        splitType:
+          type: string
+          enum: [equal, custom]
+        payerName:
+          type: string
+      required:
+        - name
+        - amount
+        - frequency
+        - participants
+        - splitType
+        - payerName
+
+    UpdateRecurringBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        amount:
+          type: number
+        frequency:
+          type: string
+          enum: [weekly, monthly, custom]
+        dayOfMonth:
+          type: ["integer", "null"]
+        participants:
+          type: string
+        splitType:
+          type: string
+          enum: [equal, custom]
+        payerName:
+          type: string
+        isActive:
+          type: boolean
+
+    # ── Dashboard ─────────────────────────────────────────────────────────────
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalEvents:
+          type: integer
+        totalAmountSplit:
+          type: number
+        totalOutstanding:
+          type: number
+        totalCollected:
+          type: number
+        activeTrips:
+          type: integer
+        settledEvents:
+          type: integer
+        pendingEvents:
+          type: integer
+        recurringCount:
+          type: integer
+      required:
+        - totalEvents
+        - totalAmountSplit
+        - totalOutstanding
+        - totalCollected
+        - activeTrips
+        - settledEvents
+        - pendingEvents
+        - recurringCount
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [payment_received, payment_requested, event_created, event_settled]
+        eventId:
+          type: integer
+        eventTitle:
+          type: string
+        participantName:
+          type: ["string", "null"]
+        amount:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - type
+        - eventId
+        - eventTitle
+        - createdAt
