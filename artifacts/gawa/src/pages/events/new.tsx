@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { useCreateEvent, useListTrips, getListTripsQueryKey } from "@workspace/api-client-react";
+import { useCreateEvent, useListTrips, getListTripsQueryKey, useListGroups, getListGroupsQueryKey, useGetGroup, getGetGroupQueryKey, useAddParticipant } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, SplitSquareHorizontal, ListPlus, Wand2 } from "lucide-react";
+import { ArrowLeft, SplitSquareHorizontal, ListPlus, Wand2, UsersRound, Check } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
 const formSchema = z.object({
@@ -27,12 +27,21 @@ const formSchema = z.object({
 export default function EventCreate() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   
   const { data: trips } = useListTrips(undefined, {
     query: { queryKey: getListTripsQueryKey() }
   });
+  const { data: groups } = useListGroups({
+    query: { queryKey: getListGroupsQueryKey() }
+  });
+  const { data: selectedGroup } = useGetGroup(
+    selectedGroupId ?? 0,
+    { query: { enabled: selectedGroupId !== null, queryKey: getGetGroupQueryKey(selectedGroupId ?? 0) } }
+  );
   
   const createEvent = useCreateEvent();
+  const addParticipant = useAddParticipant();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -46,12 +55,24 @@ export default function EventCreate() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: z.infer<typeof formSchema>) {
     createEvent.mutate(
       { data: values },
       {
-        onSuccess: (data) => {
-          toast({ title: "Split created successfully" });
+        onSuccess: async (data) => {
+          if (selectedGroup && selectedGroup.members.length > 0) {
+            toast({ title: "Split created! Adding group members…" });
+            for (const m of selectedGroup.members) {
+              await new Promise<void>((resolve) => {
+                addParticipant.mutate(
+                  { eventId: data.id, data: { name: m.name, mpesaPhone: m.mpesaPhone, shareAmount: null } },
+                  { onSuccess: () => resolve(), onError: () => resolve() }
+                );
+              });
+            }
+          } else {
+            toast({ title: "Split created successfully" });
+          }
           setLocation(`/events/${data.id}`);
         },
         onError: () => {
@@ -198,8 +219,56 @@ export default function EventCreate() {
                 />
               )}
 
-              <Button type="submit" className="w-full font-bold" disabled={createEvent.isPending}>
-                {createEvent.isPending ? "Creating..." : "Create Split"}
+              {/* From Group picker */}
+              {groups && groups.length > 0 && (
+                <div className="space-y-3">
+                  <Label className="flex items-center gap-2">
+                    <UsersRound className="h-4 w-4 text-muted-foreground" />
+                    Add Participants from Group (Optional)
+                  </Label>
+                  <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                    {groups.map(g => {
+                      const sel = selectedGroupId === g.id;
+                      return (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => setSelectedGroupId(sel ? null : g.id)}
+                          className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all flex-shrink-0 min-w-[64px] ${
+                            sel
+                              ? "border-primary bg-primary/10"
+                              : "border-border bg-secondary/40 hover:border-primary/50"
+                          }`}
+                        >
+                          <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center">
+                            <UsersRound className="h-4 w-4 text-primary" />
+                          </div>
+                          <span className="text-[10px] font-medium leading-tight text-center w-full truncate">
+                            {g.name}
+                          </span>
+                          <span className="text-[9px] text-muted-foreground">{g.memberCount}p</span>
+                          {sel && <Check className="h-3 w-3 text-primary" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {selectedGroup && (
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-1.5">
+                      <div className="text-xs font-medium text-primary">
+                        {selectedGroup.members.length} member{selectedGroup.members.length !== 1 ? "s" : ""} will be added automatically
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {selectedGroup.members.map(m => (
+                          <span key={m.id} className="text-xs bg-background border border-border px-2 py-0.5 rounded-full">{m.name}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <Button type="submit" className="w-full font-bold" disabled={createEvent.isPending || addParticipant.isPending}>
+                {(createEvent.isPending || addParticipant.isPending) ? "Creating…" : selectedGroup ? `Create Split + Add ${selectedGroup.memberCount} Members` : "Create Split"}
               </Button>
             </form>
           </Form>
