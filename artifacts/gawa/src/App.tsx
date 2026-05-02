@@ -9,6 +9,7 @@ import Dashboard from "@/pages/dashboard";
 import EventsList from "@/pages/events/index";
 import EventCreate from "@/pages/events/new";
 import EventDetail from "@/pages/events/detail";
+import EventShare from "@/pages/events/share";
 import TripsList from "@/pages/trips/index";
 import TripDetail from "@/pages/trips/detail";
 import RecurringList from "@/pages/recurring/index";
@@ -18,19 +19,24 @@ const queryClient = new QueryClient();
 
 function Router() {
   return (
-    <Layout>
-      <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/events" component={EventsList} />
-        <Route path="/events/new" component={EventCreate} />
-        <Route path="/events/:id" component={EventDetail} />
-        <Route path="/trips" component={TripsList} />
-        <Route path="/trips/:id" component={TripDetail} />
-        <Route path="/recurring" component={RecurringList} />
-        <Route path="/activity" component={ActivityFeed} />
-        <Route component={NotFound} />
-      </Switch>
-    </Layout>
+    <Switch>
+      <Route path="/share/:id" component={EventShare} />
+      <Route>
+        <Layout>
+          <Switch>
+            <Route path="/" component={Dashboard} />
+            <Route path="/events" component={EventsList} />
+            <Route path="/events/new" component={EventCreate} />
+            <Route path="/events/:id" component={EventDetail} />
+            <Route path="/trips" component={TripsList} />
+            <Route path="/trips/:id" component={TripDetail} />
+            <Route path="/recurring" component={RecurringList} />
+            <Route path="/activity" component={ActivityFeed} />
+            <Route component={NotFound} />
+          </Switch>
+        </Layout>
+      </Route>
+    </Switch>
   );
 }
 
