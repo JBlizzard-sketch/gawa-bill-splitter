@@ -4,12 +4,13 @@ import {
   useGetWeeklyStats, getGetWeeklyStatsQueryKey,
   useListRecurring, getListRecurringQueryKey,
   useFireRecurring,
+  useGetNetBalances, getGetNetBalancesQueryKey,
 } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { formatCurrency, formatDate, formatShortDate } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, ArrowUpRight, ArrowDownRight, Wallet, Receipt, Map as MapIcon, Activity, ArrowDownLeft, Sparkles, CalendarClock, Bell, Send, Loader2 } from "lucide-react";
+import { Plus, ArrowUpRight, ArrowDownRight, Wallet, Receipt, Map as MapIcon, Activity, ArrowDownLeft, Sparkles, CalendarClock, Bell, Send, Loader2, MessageCircle, Phone, TrendingDown } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useQueryClient } from "@tanstack/react-query";
@@ -87,10 +88,38 @@ function urgencyLabel(days: number): { label: string; className: string } {
   return { label: `In ${days} days`,           className: "bg-secondary text-muted-foreground border-border/50" };
 }
 
+const AVATAR_COLORS = [
+  "bg-primary/20 text-primary",
+  "bg-blue-500/20 text-blue-400",
+  "bg-amber-500/20 text-amber-400",
+  "bg-emerald-500/20 text-emerald-400",
+  "bg-purple-500/20 text-purple-400",
+  "bg-rose-500/20 text-rose-400",
+];
+function avatarColor(name: string) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+function initials(name: string) {
+  return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+}
+function toKenyanE164(phone: string) {
+  const d = phone.replace(/\D/g, "");
+  if (d.startsWith("254")) return d;
+  if (d.startsWith("0")) return "254" + d.slice(1);
+  return "254" + d;
+}
+function waLink(phone: string, name: string, amount: number) {
+  const msg = `Hi ${name.split(" ")[0]}! 👋 Just a reminder that you have an outstanding balance of *${formatCurrency(amount)}* on Gawa. Please send via M-Pesa when you can. Thanks!`;
+  return `https://wa.me/${toKenyanE164(phone)}?text=${encodeURIComponent(msg)}`;
+}
+
 export default function Dashboard() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [firingId, setFiringId] = useState<number | null>(null);
+  const [showAllBalances, setShowAllBalances] = useState(false);
 
   const { data: summary, isLoading } = useGetDashboardSummary({
     query: { queryKey: getGetDashboardSummaryQueryKey() }
@@ -143,7 +172,14 @@ export default function Dashboard() {
     );
   };
 
+  const { data: balances, isLoading: balancesLoading } = useGetNetBalances({
+    query: { queryKey: getGetNetBalancesQueryKey(), refetchInterval: 15000 }
+  });
+
   const weeklyHasData = weekly?.some(d => d.collected > 0 || d.pending > 0);
+  const BALANCE_PREVIEW = 5;
+  const visibleBalances = showAllBalances ? (balances ?? []) : (balances ?? []).slice(0, BALANCE_PREVIEW);
+  const totalOwed = (balances ?? []).reduce((s, b) => s + b.pendingAmount, 0);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-8">
@@ -324,6 +360,98 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Who Owes You */}
+      {(balancesLoading || (balances && balances.length > 0)) && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-primary/10 rounded-full">
+                  <TrendingDown className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-base font-semibold">Who Owes You</CardTitle>
+                  {!balancesLoading && balances && balances.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {formatCurrency(totalOwed)} outstanding across {balances.length} person{balances.length !== 1 ? "s" : ""}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <Link href="/activity" className="text-xs text-primary hover:underline">
+                Activity
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {balancesLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
+              </div>
+            ) : (
+              <div className="divide-y divide-border/40">
+                {visibleBalances.map((b, idx) => (
+                  <div key={b.phone} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                    {/* Rank badge */}
+                    <div className="w-5 text-center">
+                      <span className="text-xs font-bold text-muted-foreground">#{idx + 1}</span>
+                    </div>
+                    {/* Avatar */}
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 ${avatarColor(b.name)}`}>
+                      {initials(b.name)}
+                    </div>
+                    {/* Name + meta */}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{b.name}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Phone className="h-2.5 w-2.5" />{b.phone}
+                        <span className="mx-1">·</span>
+                        {b.pendingEvents} pending event{b.pendingEvents !== 1 ? "s" : ""}
+                        {b.paidAmount > 0 && (
+                          <><span className="mx-1">·</span>
+                          <span className="text-primary">{formatCurrency(b.paidAmount)} paid before</span></>
+                        )}
+                      </p>
+                    </div>
+                    {/* Amount */}
+                    <div className="text-right flex-shrink-0 mr-2">
+                      <p className="font-bold text-amber-400">{formatCurrency(b.pendingAmount)}</p>
+                      <p className="text-[10px] text-muted-foreground">owed</p>
+                    </div>
+                    {/* WhatsApp nudge */}
+                    <a
+                      href={waLink(b.phone, b.name, b.pendingAmount)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-green-500 hover:text-green-400 hover:bg-green-500/10 flex-shrink-0">
+                        <MessageCircle className="h-4 w-4" />
+                      </Button>
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Show more / less toggle */}
+            {balances && balances.length > BALANCE_PREVIEW && (
+              <div className="pt-3 border-t border-border/40 mt-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowAllBalances(v => !v)}
+                >
+                  {showAllBalances
+                    ? "Show less"
+                    : `Show ${balances.length - BALANCE_PREVIEW} more`}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid md:grid-cols-2 gap-6">
         <div className="space-y-4">
