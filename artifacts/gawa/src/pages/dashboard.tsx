@@ -1,18 +1,26 @@
-import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, useGetRecentActivity, getGetRecentActivityQueryKey } from "@workspace/api-client-react";
+import {
+  useGetDashboardSummary, getGetDashboardSummaryQueryKey,
+  useGetRecentActivity, getGetRecentActivityQueryKey,
+  useGetWeeklyStats, getGetWeeklyStatsQueryKey,
+} from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, ArrowUpRight, ArrowDownRight, Wallet, Receipt, Map as MapIcon, Activity, ArrowDownLeft, Sparkles } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  Legend, ResponsiveContainer,
+} from "recharts";
 
 function getActivityIcon(type: string) {
   switch (type) {
-    case 'payment_received': return <ArrowDownLeft className="h-4 w-4 text-primary" />;
-    case 'payment_requested': return <ArrowUpRight className="h-4 w-4 text-amber-500" />;
-    case 'event_created': return <Receipt className="h-4 w-4 text-blue-500" />;
-    case 'event_settled': return <Sparkles className="h-4 w-4 text-primary" />;
-    default: return <Activity className="h-4 w-4" />;
+    case 'payment_received':  return <ArrowDownLeft  className="h-4 w-4 text-primary"    />;
+    case 'payment_requested': return <ArrowUpRight   className="h-4 w-4 text-amber-500" />;
+    case 'event_created':     return <Receipt        className="h-4 w-4 text-blue-500"  />;
+    case 'event_settled':     return <Sparkles       className="h-4 w-4 text-primary"   />;
+    default:                  return <Activity       className="h-4 w-4"               />;
   }
 }
 
@@ -31,11 +39,35 @@ function getActivityMessage(item: any) {
   }
 }
 
+function kshFormatter(value: number) {
+  if (value >= 1000) return `${(value / 1000).toFixed(0)}k`;
+  return String(value);
+}
+
+interface TooltipPayload {
+  name: string;
+  value: number;
+  color: string;
+}
+
+function WeeklyTooltip({ active, payload, label }: { active?: boolean; payload?: TooltipPayload[]; label?: string }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-card border border-border rounded-lg shadow-lg p-3 text-sm min-w-[140px]">
+      <p className="font-semibold mb-2">{label}</p>
+      {payload.map((p) => (
+        <div key={p.name} className="flex justify-between gap-4">
+          <span style={{ color: p.color }}>{p.name}</span>
+          <span className="font-medium">{formatCurrency(p.value)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { data: summary, isLoading } = useGetDashboardSummary({
-    query: {
-      queryKey: getGetDashboardSummaryQueryKey(),
-    }
+    query: { queryKey: getGetDashboardSummaryQueryKey() }
   });
 
   const { data: activity, isLoading: activityLoading } = useGetRecentActivity({ limit: 5 }, {
@@ -44,6 +76,12 @@ export default function Dashboard() {
       refetchInterval: 15000,
     }
   });
+
+  const { data: weekly, isLoading: weeklyLoading } = useGetWeeklyStats({
+    query: { queryKey: getGetWeeklyStatsQueryKey() }
+  });
+
+  const weeklyHasData = weekly?.some(d => d.collected > 0 || d.pending > 0);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-8">
@@ -113,6 +151,50 @@ export default function Dashboard() {
           </Card>
         </div>
       ) : null}
+
+      {/* Weekly chart */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-semibold">Last 7 days</CardTitle>
+          <p className="text-xs text-muted-foreground">Daily collected vs outstanding splits</p>
+        </CardHeader>
+        <CardContent className="pt-2">
+          {weeklyLoading ? (
+            <Skeleton className="h-52 w-full rounded-lg" />
+          ) : !weeklyHasData ? (
+            <div className="h-52 flex items-center justify-center text-sm text-muted-foreground">
+              No payment activity yet — create a split to see trends here.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={210}>
+              <BarChart data={weekly} barGap={4} barCategoryGap="28%">
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis
+                  dataKey="day"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tickFormatter={kshFormatter}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={36}
+                />
+                <Tooltip content={<WeeklyTooltip />} cursor={{ fill: "hsl(var(--secondary))" }} />
+                <Legend
+                  iconType="circle"
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+                />
+                <Bar dataKey="collected" name="Collected" fill="hsl(var(--primary))"    radius={[4, 4, 0, 0]} />
+                <Bar dataKey="pending"   name="Pending"   fill="hsl(var(--secondary))" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid md:grid-cols-2 gap-6">
         <div className="space-y-4">
