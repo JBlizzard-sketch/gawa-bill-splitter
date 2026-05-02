@@ -3,7 +3,8 @@ import {
   useGetEvent, getGetEventQueryKey,
   useAddParticipant, 
   useSendPaymentRequests,
-  useMarkPaid
+  useMarkPaid,
+  useListContacts, getListContactsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -11,13 +12,31 @@ import { formatCurrency, formatPhone } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Send, CheckCircle2, UserPlus, Phone, Loader2, MoreVertical, MessageCircle, Share2, Link2, Check } from "lucide-react";
+import { ArrowLeft, Send, CheckCircle2, UserPlus, Phone, Loader2, MoreVertical, MessageCircle, Share2, Link2, Check, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+
+function getInitials(name: string) {
+  return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+}
+
+const AVATAR_COLORS = [
+  "bg-primary/20 text-primary",
+  "bg-blue-500/20 text-blue-400",
+  "bg-amber-500/20 text-amber-400",
+  "bg-emerald-500/20 text-emerald-400",
+  "bg-purple-500/20 text-purple-400",
+  "bg-rose-500/20 text-rose-400",
+];
+function avatarColor(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) & 0xffff;
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
 
 function toKenyanE164(phone: string): string {
   const digits = phone.replace(/\D/g, "");
@@ -56,6 +75,20 @@ export default function EventDetail() {
   const addParticipant = useAddParticipant();
   const sendRequests = useSendPaymentRequests();
   const markPaid = useMarkPaid();
+
+  const { data: contacts } = useListContacts({ query: { queryKey: getListContactsQueryKey() } });
+
+  const alreadyAddedPhones = new Set(
+    (event?.participants ?? []).map((p: any) => p.mpesaPhone.replace(/\D/g, ""))
+  );
+
+  const availableContacts = (contacts ?? []).filter(
+    c => !alreadyAddedPhones.has(c.mpesaPhone.replace(/\D/g, ""))
+  );
+
+  function pickContact(contact: { name: string; mpesaPhone: string }) {
+    setNewParticipant(prev => ({ ...prev, name: contact.name, phone: contact.mpesaPhone }));
+  }
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetEventQueryKey(eventId) });
 
@@ -188,7 +221,52 @@ export default function EventDetail() {
                   <DialogHeader>
                     <DialogTitle>Add Participant</DialogTitle>
                   </DialogHeader>
-                  <div className="space-y-4 py-4">
+                  <div className="space-y-4 py-2">
+                    {/* Contacts picker strip */}
+                    {availableContacts.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                          <Users className="h-3.5 w-3.5" />
+                          From Contacts
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide -mx-1 px-1">
+                          {availableContacts.map(c => {
+                            const selected = newParticipant.name === c.name && newParticipant.phone === c.mpesaPhone;
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => pickContact(c)}
+                                className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all flex-shrink-0 w-16 ${
+                                  selected
+                                    ? "border-primary bg-primary/10"
+                                    : "border-border bg-secondary/40 hover:border-primary/50 hover:bg-secondary/80"
+                                }`}
+                              >
+                                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold ${avatarColor(c.name)}`}>
+                                  {getInitials(c.name)}
+                                </div>
+                                <span className="text-[10px] font-medium leading-tight text-center line-clamp-2 w-full">
+                                  {c.name.split(" ")[0]}
+                                </span>
+                                {selected && (
+                                  <Check className="h-3 w-3 text-primary" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="relative">
+                          <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t border-border/50" />
+                          </div>
+                          <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-background px-2 text-muted-foreground">or enter manually</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="space-y-2">
                       <Label>Name</Label>
                       <Input
