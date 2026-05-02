@@ -8,6 +8,7 @@ import tripsRouter from "./trips";
 import recurringRouter from "./recurring";
 import dashboardRouter from "./dashboard";
 import contactsRouter from "./contacts";
+import groupsRouter from "./groups";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(tripsRouter);
 router.use(recurringRouter);
 router.use(dashboardRouter);
 router.use(contactsRouter);
+router.use(groupsRouter);
 
 export default router;
