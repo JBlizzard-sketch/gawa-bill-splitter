@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, Receipt, CalendarClock, Activity, Map as MapIcon } from "lucide-react";
+import { Home, Receipt, CalendarClock, Activity, Map as MapIcon, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface LayoutProps {
@@ -14,6 +14,7 @@ export function Layout({ children }: LayoutProps) {
     { href: "/events", icon: Receipt, label: "Events" },
     { href: "/trips", icon: MapIcon, label: "Trips" },
     { href: "/recurring", icon: CalendarClock, label: "Recurring" },
+    { href: "/contacts", icon: Users, label: "Contacts" },
     { href: "/activity", icon: Activity, label: "Activity" },
   ];
 
