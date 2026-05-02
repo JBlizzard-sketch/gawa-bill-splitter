@@ -6,6 +6,7 @@ import {
   ListPaymentsParams,
 } from "@workspace/api-zod";
 import { sendStkPush } from "../lib/mpesa";
+import { sendSms, buildPaymentRequestSms } from "../lib/sms";
 
 const router: IRouter = Router();
 
@@ -64,6 +65,19 @@ router.post("/events/:eventId/send-requests", async (req, res): Promise<void> =>
           participantName: participant.name,
           amount: participant.shareAmount,
         });
+
+        // Send SMS reminder alongside the Mpesa STK push
+        const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0]?.trim() ?? "";
+        const shareUrl = domain ? `https://${domain}/share/${event.id}` : `/share/${event.id}`;
+        const smsBody = buildPaymentRequestSms({
+          participantName: participant.name,
+          amount,
+          eventTitle: event.title,
+          payerName: event.payerName,
+          shareUrl,
+        });
+        // fire-and-forget — don't fail the whole request if SMS fails
+        sendSms(participant.mpesaPhone, smsBody).catch(() => {});
       } else {
         await db
           .update(participantsTable)
