@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { sql, desc } from "drizzle-orm";
+import { sql, desc, and, gte, eq } from "drizzle-orm";
 import { db, eventsTable, participantsTable, activityLogTable, tripsTable, recurringBillsTable } from "@workspace/db";
 import { GetRecentActivityQueryParams } from "@workspace/api-zod";
 
@@ -45,6 +45,68 @@ router.get("/dashboard/activity", async (req, res): Promise<void> => {
     ...a,
     amount: a.amount != null ? parseFloat(String(a.amount)) : null,
   })));
+});
+
+router.get("/dashboard/weekly", async (_req, res): Promise<void> => {
+  const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  // Build last-7-days date range in UTC
+  const days: { date: string; day: string }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setUTCHours(0, 0, 0, 0);
+    d.setUTCDate(d.getUTCDate() - i);
+    days.push({
+      date: d.toISOString().slice(0, 10),
+      day: DAY_LABELS[d.getUTCDay()],
+    });
+  }
+
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 6);
+  sevenDaysAgo.setUTCHours(0, 0, 0, 0);
+
+  // Collected: participants with paidAt in range
+  const paidRows = await db
+    .select({
+      date: sql<string>`to_char(${participantsTable.paidAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`,
+      total: sql<string>`SUM(${participantsTable.shareAmount})`,
+    })
+    .from(participantsTable)
+    .where(
+      and(
+        eq(participantsTable.paymentStatus, "paid"),
+        gte(participantsTable.paidAt, sevenDaysAgo)
+      )
+    )
+    .groupBy(sql`to_char(${participantsTable.paidAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`);
+
+  // Pending: participants with pending/requested status, created in range
+  const pendingRows = await db
+    .select({
+      date: sql<string>`to_char(${participantsTable.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`,
+      total: sql<string>`SUM(${participantsTable.shareAmount})`,
+    })
+    .from(participantsTable)
+    .where(
+      and(
+        sql`${participantsTable.paymentStatus} IN ('pending', 'requested')`,
+        gte(participantsTable.createdAt, sevenDaysAgo)
+      )
+    )
+    .groupBy(sql`to_char(${participantsTable.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`);
+
+  const collectedByDay = Object.fromEntries(paidRows.map(r => [r.date, parseFloat(r.total ?? "0")]));
+  const pendingByDay   = Object.fromEntries(pendingRows.map(r => [r.date, parseFloat(r.total ?? "0")]));
+
+  const result = days.map(({ date, day }) => ({
+    day,
+    date,
+    collected: collectedByDay[date] ?? 0,
+    pending:   pendingByDay[date]   ?? 0,
+  }));
+
+  res.json(result);
 });
 
 export default router;
