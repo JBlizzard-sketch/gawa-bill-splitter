@@ -109,4 +109,65 @@ router.get("/dashboard/weekly", async (_req, res): Promise<void> => {
   res.json(result);
 });
 
+router.get("/dashboard/balances", async (_req, res): Promise<void> => {
+  const participants = await db
+    .select({
+      name: participantsTable.name,
+      phone: participantsTable.mpesaPhone,
+      shareAmount: participantsTable.shareAmount,
+      paymentStatus: participantsTable.paymentStatus,
+      eventId: participantsTable.eventId,
+    })
+    .from(participantsTable);
+
+  // Group by phone number
+  const map = new Map<string, {
+    name: string;
+    phone: string;
+    pendingAmount: number;
+    paidAmount: number;
+    eventIds: Set<number>;
+    pendingEventIds: Set<number>;
+  }>();
+
+  for (const p of participants) {
+    const phone = p.phone.replace(/\D/g, "");
+    const amt = parseFloat(String(p.shareAmount ?? 0));
+    if (!map.has(phone)) {
+      map.set(phone, {
+        name: p.name,
+        phone: p.phone,
+        pendingAmount: 0,
+        paidAmount: 0,
+        eventIds: new Set(),
+        pendingEventIds: new Set(),
+      });
+    }
+    const entry = map.get(phone)!;
+    entry.eventIds.add(p.eventId);
+    if (p.paymentStatus === "paid") {
+      entry.paidAmount += amt;
+    } else {
+      entry.pendingAmount += amt;
+      entry.pendingEventIds.add(p.eventId);
+    }
+    // Use most recent name seen for this phone
+    entry.name = p.name;
+  }
+
+  const result = Array.from(map.values())
+    .filter(e => e.pendingAmount > 0)
+    .map(e => ({
+      name: e.name,
+      phone: e.phone,
+      pendingAmount: Math.round(e.pendingAmount * 100) / 100,
+      paidAmount: Math.round(e.paidAmount * 100) / 100,
+      eventCount: e.eventIds.size,
+      pendingEvents: e.pendingEventIds.size,
+    }))
+    .sort((a, b) => b.pendingAmount - a.pendingAmount);
+
+  res.json(result);
+});
+
 export default router;
